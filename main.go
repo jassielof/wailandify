@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,36 +129,24 @@ func main() {
 		fmt.Printf("🏃 Applying flags: %s\n", strings.Join(combinedFlags, " "))
 
 		// Process main browser desktop files
-		for _, desktopFile := range browser.DesktopFiles {
-			if err := copyAndModifyDesktopFile(systemAppsDir, userAppsDir, desktopFile, combinedFlags); err != nil {
-				fmt.Printf("⚠️  Warning: Could not process %s: %v\n", desktopFile, err)
-			} else {
-				fmt.Printf("✅ Updated: %s\n", desktopFile)
-			}
-		}
+		var allFilesToProcess []string
+		allFilesToProcess = append(allFilesToProcess, browser.DesktopFiles...)
 
 		// Process PWA files if patterns are defined
 		if len(browser.PWAPatterns) > 0 {
-			pwaFiles, err := findPWADesktopFiles(systemAppsDir, userAppsDir, browser.PWAPatterns, browser.ExcludePatterns)
+			pwaFiles, err := findPWADesktopFiles(userAppsDir, browser.PWAPatterns, browser.ExcludePatterns)
 			if err != nil {
 				fmt.Printf("⚠️  Warning: Error finding %s PWA files: %v\n", browser.Name, err)
-				continue
-			}
-
-			if len(pwaFiles) == 0 {
+			} else if len(pwaFiles) == 0 {
 				fmt.Printf("ℹ️  No PWA files found for %s\n", browser.Name)
-				continue
+			} else {
+				fmt.Printf("🔗 Found %d PWA files for %s\n", len(pwaFiles), browser.Name)
+				allFilesToProcess = append(allFilesToProcess, pwaFiles...)
 			}
+		}
 
-			fmt.Printf("🔗 Found %d PWA files for %s\n", len(pwaFiles), browser.Name)
-
-			for _, pwaFile := range pwaFiles {
-				if err := copyAndModifyDesktopFile(systemAppsDir, userAppsDir, pwaFile, combinedFlags); err != nil {
-					fmt.Printf("⚠️  Warning: Could not process PWA file %s: %v\n", pwaFile, err)
-				} else {
-					fmt.Printf("✅ Updated PWA: %s\n", pwaFile)
-				}
-			}
+		for _, desktopFile := range allFilesToProcess {
+			processDesktopFile(systemAppsDir, userAppsDir, desktopFile, combinedFlags)
 		}
 	}
 
@@ -184,170 +173,181 @@ func getCombinedFlags(flagSetNames []string) []string {
 	return combinedFlags
 }
 
-func findPWADesktopFiles(systemDir, userDir string, patterns, excludePatterns []string) ([]string, error) {
+// findPWADesktopFiles scans only the user's application directory for PWA desktop files.
+func findPWADesktopFiles(userDir string, patterns, excludePatterns []string) ([]string, error) {
 	var pwaFiles []string
 
-	// Check both system and user directories
-	dirs := []string{systemDir, userDir}
+	entries, err := os.ReadDir(userDir)
+	if err != nil {
+		// If the directory doesn't exist, it's not an error, just no files found.
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("could not read user applications directory: %v", err)
+	}
 
-	for _, dir := range dirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue // Skip if directory doesn't exist or can't be read
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
 		}
 
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
+		name := entry.Name()
 
-			name := entry.Name()
-
-			// Check if file matches any pattern
-			matched := false
-			for _, pattern := range patterns {
-				if matched, _ = filepath.Match(pattern, name); matched {
-					break
-				}
-			}
-
-			if !matched {
-				continue
-			}
-
-			// Check if file should be excluded
-			excluded := false
-			for _, excludePattern := range excludePatterns {
-				if matched, _ = filepath.Match(excludePattern, name); matched {
-					excluded = true
-					break
-				}
-			}
-
-			if excluded {
-				continue
-			}
-
-			// Check if we already have this file
-			alreadyAdded := false
-			for _, existing := range pwaFiles {
-				if existing == name {
-					alreadyAdded = true
-					break
-				}
-			}
-
-			if !alreadyAdded {
-				pwaFiles = append(pwaFiles, name)
+		// Check if file matches any pattern
+		matched := false
+		for _, pattern := range patterns {
+			if matched, _ = filepath.Match(pattern, name); matched {
+				break
 			}
 		}
+
+		if !matched {
+			continue
+		}
+
+		// Check if file should be excluded
+		excluded := false
+		for _, excludePattern := range excludePatterns {
+			if matched, _ = filepath.Match(excludePattern, name); matched {
+				excluded = true
+				break
+			}
+		}
+
+		if excluded {
+			continue
+		}
+
+		pwaFiles = append(pwaFiles, name)
 	}
 
 	return pwaFiles, nil
 }
 
-func copyAndModifyDesktopFile(srcDir, dstDir, filename string, flags []string) error {
-	srcPath := filepath.Join(srcDir, filename)
-	dstPath := filepath.Join(dstDir, filename)
-	userHome, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("could not get user home directory: %v", err)
-	}
-	userSrcPath := filepath.Join(userHome, ".local/share/applications", filename)
+// processDesktopFile handles the logic for a single desktop file:
+// 1. Ensures a copy exists in the user directory.
+// 2. Modifies the user copy to apply flags.
+// 3. Skips writing if the file is already up-to-date.
+func processDesktopFile(systemAppsDir, userAppsDir, filename string, flags []string) {
+	srcPath := filepath.Join(systemAppsDir, filename)
+	dstPath := filepath.Join(userAppsDir, filename)
 
-	// Check if source file exists, first in system dir, then in user dir
-	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
-		// If not in system dir, check user dir
-		if _, userErr := os.Stat(userSrcPath); userErr == nil {
-			srcPath = userSrcPath // It exists in user dir, use that as source
-		} else {
-			return fmt.Errorf("source file %s does not exist in %s or %s", filename, srcDir, filepath.Dir(userSrcPath))
+	// If the destination file doesn't exist, copy it from the system directory.
+	if _, err := os.Stat(dstPath); os.IsNotExist(err) {
+		if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+			// Source doesn't exist either, so we can't do anything.
+			// This is a common case (e.g., beta/dev browser not installed), so don't show a warning.
+			return
 		}
+
+		input, err := os.ReadFile(srcPath)
+		if err != nil {
+			fmt.Printf("⚠️  Warning: Failed to read system file %s: %v\n", filename, err)
+			return
+		}
+
+		if err := os.WriteFile(dstPath, input, 0644); err != nil {
+			fmt.Printf("⚠️  Warning: Failed to copy %s to user directory: %v\n", filename, err)
+			return
+		}
+		fmt.Printf("📋 Copied %s to user directory\n", filename)
 	}
 
-	// Read the entire source file into memory first to avoid issues
-	// when srcPath and dstPath are the same file.
-	content, err := os.ReadFile(srcPath)
+	// Read the destination file (user's copy).
+	content, err := os.ReadFile(dstPath)
 	if err != nil {
-		return fmt.Errorf("error reading source file: %v", err)
+		fmt.Printf("⚠️  Warning: Failed to read user file %s: %v\n", filename, err)
+		return
 	}
 
-	// Create destination file (this will truncate the file if it exists)
-	dstFile, err := os.Create(dstPath)
+	// Process the content and generate the new version.
+	modifiedContent, modifiedCount, err := modifyDesktopContent(content, flags)
 	if err != nil {
-		return fmt.Errorf("error creating destination file: %v", err)
+		fmt.Printf("⚠️  Warning: Could not process %s: %v\n", filename, err)
+		return
 	}
-	defer dstFile.Close()
 
-	// Process file line by line from memory
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
-	writer := bufio.NewWriter(dstFile)
-	defer writer.Flush()
+	// If content is unchanged, do nothing.
+	if bytes.Equal(content, modifiedContent) {
+		fmt.Printf("✅ Up-to-date: %s\n", filename)
+		return
+	}
 
-	execPattern := regexp.MustCompile(`^Exec=(.*)$`)
-	execLineCount := 0
+	// Write the modified content back to the destination file.
+	if err := os.WriteFile(dstPath, modifiedContent, 0644); err != nil {
+		fmt.Printf("⚠️  Warning: Failed to write updated file %s: %v\n", filename, err)
+		return
+	}
+
+	fmt.Printf("✅ Updated %s (%d Exec lines modified)\n", filename, modifiedCount)
+}
+
+// modifyDesktopContent takes the content of a desktop file and returns the modified version.
+func modifyDesktopContent(content []byte, flags []string) ([]byte, int, error) {
+	var out bytes.Buffer
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	execPattern := regexp.MustCompile(`^(Exec=)(.*)$`)
+	modifiedCount := 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if matches := execPattern.FindStringSubmatch(line); len(matches) > 2 {
+			modifiedCount++
+			execCmd := matches[2]
 
-		// Check if this is an Exec line (can appear in multiple sections)
-		if matches := execPattern.FindStringSubmatch(line); matches != nil {
-			execLineCount++
-			execCmd := matches[1]
-
-			// Remove any existing flags that we're about to add (to avoid duplicates)
+			// Remove any existing flags that we're about to add.
 			for _, flag := range flags {
-				// Handle both with and without equals sign
 				flagBase := strings.Split(flag, "=")[0]
 				execCmd = removeFlagFromCommand(execCmd, flagBase)
 			}
 
-			// Find the executable part and add flags after it
+			// Add the new flags.
 			modifiedExecCmd := addFlagsToExecCommand(execCmd, flags)
 			line = "Exec=" + modifiedExecCmd
 		}
-
-		if _, err := writer.WriteString(line + "\n"); err != nil {
-			return fmt.Errorf("error writing to destination file: %v", err)
+		if _, err := out.WriteString(line + "\n"); err != nil {
+			return nil, 0, err
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading source file: %v", err)
+		return nil, 0, err
 	}
 
-	if execLineCount > 0 {
-		fmt.Printf("    Modified %d Exec lines\n", execLineCount)
-	}
-
-	return nil
+	return out.Bytes(), modifiedCount, nil
 }
 
+// addFlagsToExecCommand inserts flags after the executable, before other arguments.
 func addFlagsToExecCommand(execCmd string, flags []string) string {
 	if len(flags) == 0 {
 		return execCmd
 	}
 
-	// Parse the command to find the executable and its arguments
 	parts := strings.Fields(execCmd)
 	if len(parts) == 0 {
 		return execCmd
 	}
 
+	// The executable is the first part.
 	executable := parts[0]
-	flagsStr := strings.Join(flags, " ")
+	args := parts[1:]
 
-	// Find where to insert flags - after executable but before other arguments
-	// Look for the first argument that doesn't start with -- (likely a file/URL argument)
-	// (Currently, flags are always inserted after executable)
+	// Find the index of the first non-flag argument (e.g., %U, %F, a URL).
+	// We consider anything that doesn't start with "-" to be a non-flag argument.
+	insertIndex := 0
+	for i, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			break
+		}
+		insertIndex = i + 1
+	}
 
-	// Build the new command
+	// Build the new command.
 	var newParts []string
 	newParts = append(newParts, executable)
-	newParts = append(newParts, strings.Fields(flagsStr)...)
-	if len(parts) > 1 {
-		newParts = append(newParts, parts[1:]...)
-	}
+	newParts = append(newParts, args[:insertIndex]...)
+	newParts = append(newParts, flags...)
+	newParts = append(newParts, args[insertIndex:]...)
 
 	return strings.Join(newParts, " ")
 }
