@@ -294,15 +294,7 @@ func modifyDesktopContent(content []byte, flags []string) ([]byte, int, error) {
 		if matches := execPattern.FindStringSubmatch(line); len(matches) > 2 {
 			modifiedCount++
 			execCmd := matches[2]
-
-			// Remove any existing flags that we're about to add.
-			for _, flag := range flags {
-				flagBase := strings.Split(flag, "=")[0]
-				execCmd = removeFlagFromCommand(execCmd, flagBase)
-			}
-
-			// Add the new flags.
-			modifiedExecCmd := addFlagsToExecCommand(execCmd, flags)
+			modifiedExecCmd := updateExecCommand(execCmd, flags)
 			line = "Exec=" + modifiedExecCmd
 		}
 		if _, err := out.WriteString(line + "\n"); err != nil {
@@ -317,37 +309,108 @@ func modifyDesktopContent(content []byte, flags []string) ([]byte, int, error) {
 	return out.Bytes(), modifiedCount, nil
 }
 
-// addFlagsToExecCommand inserts flags after the executable, before other arguments.
-func addFlagsToExecCommand(execCmd string, flags []string) string {
-	if len(flags) == 0 {
+// parseCommandLine splits a command string into arguments, correctly handling quoted sections.
+func parseCommandLine(command string) ([]string, error) {
+	var args []string
+	var currentArg strings.Builder
+	inQuotes := false
+	var quoteChar rune
+
+	for i, r := range command {
+		if inQuotes {
+			if r == quoteChar {
+				inQuotes = false
+			} else {
+				currentArg.WriteRune(r)
+			}
+		} else {
+			switch r {
+			case '"', '\'':
+				inQuotes = true
+				quoteChar = r
+			case ' ':
+				if currentArg.Len() > 0 {
+					args = append(args, currentArg.String())
+					currentArg.Reset()
+				}
+			default:
+				currentArg.WriteRune(r)
+			}
+		}
+
+		// Special case for the very last character in the command
+		if i == len(command)-1 && currentArg.Len() > 0 {
+			args = append(args, currentArg.String())
+		}
+	}
+
+	if inQuotes {
+		return nil, fmt.Errorf("unclosed quote in command: %s", command)
+	}
+
+	return args, nil
+}
+
+// updateExecCommand intelligently adds missing flags to an Exec command string.
+// It handles quoted arguments and avoids duplicating existing flags.
+func updateExecCommand(execCmd string, flagsToAdd []string) string {
+	if len(flagsToAdd) == 0 {
 		return execCmd
 	}
 
-	parts := strings.Fields(execCmd)
+	trimmedCmd := strings.TrimSpace(execCmd)
+	parts, err := parseCommandLine(trimmedCmd)
+	if err != nil {
+		// Fallback to old behavior if parsing fails
+		fmt.Printf("⚠️  Warning: Could not parse command line '%s': %v. Using simple split.\n", execCmd, err)
+		parts = strings.Fields(trimmedCmd)
+	}
+
 	if len(parts) == 0 {
-		return execCmd
+		return ""
 	}
 
-	// The executable is the first part.
 	executable := parts[0]
 	args := parts[1:]
 
-	// Find the index of the first non-flag argument (e.g., %U, %F, a URL).
-	// We consider anything that doesn't start with "-" to be a non-flag argument.
-	insertIndex := 0
-	for i, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			break
+	// 2. Separate existing arguments into flags and non-flags (like %U, URLs).
+	var existingFlags []string
+	var otherArgs []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			existingFlags = append(existingFlags, arg)
+		} else {
+			otherArgs = append(otherArgs, arg)
 		}
-		insertIndex = i + 1
 	}
 
-	// Build the new command.
+	// 3. Determine which flags to add, avoiding duplicates.
+	finalFlags := make([]string, len(existingFlags))
+	copy(finalFlags, existingFlags)
+	existingSet := make(map[string]bool)
+	for _, f := range existingFlags {
+		existingSet[f] = true
+	}
+
+	for _, flagToAdd := range flagsToAdd {
+		if !existingSet[flagToAdd] {
+			finalFlags = append(finalFlags, flagToAdd)
+			existingSet[flagToAdd] = true // In case flagsToAdd has duplicates
+		}
+	}
+
+	// 4. Reconstruct the command string.
 	var newParts []string
 	newParts = append(newParts, executable)
-	newParts = append(newParts, args[:insertIndex]...)
-	newParts = append(newParts, flags...)
-	newParts = append(newParts, args[insertIndex:]...)
+	newParts = append(newParts, finalFlags...)
+	newParts = append(newParts, otherArgs...)
+
+	// Re-quote any arguments that contain spaces
+	for i, part := range newParts {
+		if strings.Contains(part, " ") && !strings.HasPrefix(part, `"`) {
+			newParts[i] = `"` + part + `"`
+		}
+	}
 
 	return strings.Join(newParts, " ")
 }
