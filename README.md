@@ -7,6 +7,7 @@ Tired of manually editing desktop entries after every browser update? This tool 
 ## ✨ Features
 
 ### Current Features
+
 - **🔄 Automatic Desktop Entry Sync** - Copies system desktop entries to user directory (survives updates)
 - **🖱️ Wayland Gesture Support** - Enables swipe back/forward navigation for PWAs
 - **📱 PWA Support** - Automatically finds and fixes all PWA desktop entries
@@ -15,16 +16,19 @@ Tired of manually editing desktop entries after every browser update? This tool 
 - **🔍 Auto-Discovery** - Finds PWA files using browser-specific prefixes
 
 ### Supported Browsers
+
 - **Brave Browser** (`brave-*.desktop` PWAs)
 - **Microsoft Edge** (`msedge-*.desktop` PWAs)
 
 ### Applied Wayland Flags
+
 - `--enable-features=TouchpadOverscrollHistoryNavigation` - Enables swipe gestures
 - `--ozone-platform=wayland` - Proper Wayland platform support
 
 ## 🚀 Installation
 
 ### Option 1: Download Binary (Recommended)
+
 ```bash
 # Download from releases (coming soon)
 wget https://github.com/yourusername/linux-browser-desktop-manager/releases/latest/download/desktop-manager
@@ -33,6 +37,7 @@ sudo mv desktop-manager /usr/local/bin/
 ```
 
 ### Option 2: Build from Source
+
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/linux-browser-desktop-manager.git
@@ -46,6 +51,7 @@ sudo mv desktop-manager /usr/local/bin/
 ```
 
 ### Option 3: Go Install
+
 ```bash
 go install github.com/yourusername/linux-browser-desktop-manager@latest
 ```
@@ -53,18 +59,21 @@ go install github.com/yourusername/linux-browser-desktop-manager@latest
 ## 📖 Usage
 
 ### Basic Usage
+
 ```bash
 # Run the desktop manager
 desktop-manager
 ```
 
 ### Typical Workflow
+
 1. Install your browsers (Brave, Edge)
 2. Create some PWAs
 3. Run `desktop-manager` to fix gesture support
 4. After browser updates, run `desktop-manager` again to sync changes
 
 ### Example Output
+
 ```
 🚀 Desktop Entry Manager for Linux Browsers
 ============================================
@@ -89,6 +98,7 @@ desktop-manager
 ## 🧩 Why This Tool Exists
 
 ### The Problem
+
 On Linux, Chromium-based browsers have several issues:
 
 1. **Firefox PWAs** - Requires extensions, creates separate processes, no cookie sync
@@ -98,7 +108,9 @@ On Linux, Chromium-based browsers have several issues:
 5. **PWA Inheritance** - PWAs don't inherit browser flags unless browser is opened first
 
 ### The Solution
+
 This tool automatically:
+
 - Copies desktop entries to user directory (won't be overridden)
 - Adds proper Wayland flags to enable gesture support
 - Handles both main browser and all PWA entries
@@ -107,6 +119,7 @@ This tool automatically:
 ## 🔮 TODO / Future Features
 
 ### Browser Support
+
 - [ ] **Google Chrome** support (`google-chrome-*.desktop`)
 - [ ] **Firefox** PWA support (if they improve their implementation)
 - [ ] **Chromium** support (`chromium-*.desktop`)
@@ -114,6 +127,7 @@ This tool automatically:
 - [ ] **Vivaldi** support (`vivaldi-*.desktop`)
 
 ### Configuration & Flexibility
+
 - [ ] **Config file support** - Custom flags per browser via YAML/JSON
 - [ ] **Command-line flags** - Override default Wayland flags
 - [ ] **Selective processing** - Choose which browsers to process
@@ -121,6 +135,7 @@ This tool automatically:
 - [ ] **Backup/restore** - Backup original entries before modification
 
 ### Advanced Features
+
 - [ ] **Auto-detection** - Discover installed browsers automatically
 - [ ] **Flag validation** - Check if flags are actually supported
 - [ ] **Desktop environment detection** - Different flags for GNOME/KDE/etc
@@ -128,12 +143,14 @@ This tool automatically:
 - [ ] **GUI version** - Simple graphical interface for non-technical users
 
 ### Developer Experience
+
 - [ ] **Plugin system** - Add custom browser support via plugins
 - [ ] **Testing suite** - Automated tests for desktop entry parsing
 - [ ] **Cross-platform** - Support for other Linux distributions
 - [ ] **Logging levels** - Verbose/quiet output modes
 
 ### Integration & Automation
+
 - [ ] **Package manager hooks** - Auto-run after browser updates
 - [ ] **Desktop notifications** - Notify when entries are updated
 - [ ] **System tray integration** - Background monitoring and updates
@@ -142,11 +159,13 @@ This tool automatically:
 ## 🛠️ Technical Details
 
 ### File Locations
+
 - **System desktop entries**: `/usr/share/applications/`
 - **User desktop entries**: `~/.local/share/applications/`
 - **PWA detection patterns**: `brave-*.desktop`, `msedge-*.desktop`
 
 ### How It Works
+
 1. Scans system applications directory for browser desktop files
 2. Copies found files to user applications directory
 3. Modifies `Exec=` lines to include Wayland flags
@@ -156,12 +175,14 @@ This tool automatically:
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to:
+
 - Report bugs and issues
 - Suggest new features
 - Submit pull requests
 - Improve documentation
 
 ### Development Setup
+
 ```bash
 git clone https://github.com/yourusername/linux-browser-desktop-manager.git
 cd linux-browser-desktop-manager

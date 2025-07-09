@@ -1,0 +1,16 @@
+version: '3'
+
+vars:
+  GREETING: Hello, World!
+
+tasks:
+  default:
+    cmd: go build -o bin/
+  docker:
+    cmds:
+      - sudo docker build -t lbdm .
+      - mkdir -p data/.local/share/applications data/usr/share/applications
+      - cp -r ~/.local/share/applications/* data/.1local/share/applications/ 2>/dev/null || true
+      - cp -r /usr/share/applications/* data/usr/share/applications/ 2>/dev/null || true
+      - sudo docker run --rm -it lbdm bash
+
