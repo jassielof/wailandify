@@ -1,132 +1,177 @@
 package main
 
 import (
-    "fmt"
-    "regexp"
-    "strings"
+	"fmt"
+	"regexp"
+	"strings"
 )
 
 // parseCommandLine splits a command string into arguments, correctly handling quoted sections.
 func parseCommandLine(command string) ([]string, error) {
-    var args []string
-    var currentArg strings.Builder
-    inQuotes := false
-    var quoteChar rune
+	var args []string
+	var currentArg strings.Builder
+	inQuotes := false
+	var quoteChar rune
 
-    for i, r := range command {
-        if inQuotes {
-            if r == quoteChar {
-                inQuotes = false
-            } else {
-                currentArg.WriteRune(r)
-            }
-        } else {
-            switch r {
-            case '"', '\'':
-                inQuotes = true
-                quoteChar = r
-            case ' ':
-                if currentArg.Len() > 0 {
-                    args = append(args, currentArg.String())
-                    currentArg.Reset()
-                }
-            default:
-                currentArg.WriteRune(r)
-            }
-        }
+	for i, r := range command {
+		if inQuotes {
+			if r == quoteChar {
+				inQuotes = false
+			} else {
+				currentArg.WriteRune(r)
+			}
+		} else {
+			switch r {
+			case '"', '\'':
+				inQuotes = true
+				quoteChar = r
+			case ' ':
+				if currentArg.Len() > 0 {
+					args = append(args, currentArg.String())
+					currentArg.Reset()
+				}
+			default:
+				currentArg.WriteRune(r)
+			}
+		}
 
-        // Special case for the very last character in the command
-        if i == len(command)-1 && currentArg.Len() > 0 {
-            args = append(args, currentArg.String())
-        }
-    }
+		// Special case for the very last character in the command
+		if i == len(command)-1 && currentArg.Len() > 0 {
+			args = append(args, currentArg.String())
+		}
+	}
 
-    if inQuotes {
-        return nil, fmt.Errorf("unclosed quote in command: %s", command)
-    }
+	if inQuotes {
+		return nil, fmt.Errorf("unclosed quote in command: %s", command)
+	}
 
-    return args, nil
+	return args, nil
+}
+
+// mergeFeatureFlags merges all --enable-features and --disable-features flags into one of each, comma-separated.
+func mergeFeatureFlags(args []string) []string {
+	var result []string
+	enableFeatures := []string{}
+	disableFeatures := []string{}
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--enable-features=") {
+			features := strings.TrimPrefix(arg, "--enable-features=")
+			enableFeatures = append(enableFeatures, features)
+		} else if strings.HasPrefix(arg, "--disable-features=") {
+			features := strings.TrimPrefix(arg, "--disable-features=")
+			disableFeatures = append(disableFeatures, features)
+		} else {
+			result = append(result, arg)
+		}
+	}
+
+	// Deduplicate features
+	unique := func(features []string) []string {
+		seen := make(map[string]struct{})
+		var out []string
+		for _, group := range features {
+			for _, f := range strings.Split(group, ",") {
+				if _, ok := seen[f]; !ok {
+					seen[f] = struct{}{}
+					out = append(out, f)
+				}
+			}
+		}
+		return out
+	}
+
+	if len(enableFeatures) > 0 {
+		result = append(result, "--enable-features="+strings.Join(unique(enableFeatures), ","))
+	}
+	if len(disableFeatures) > 0 {
+		result = append(result, "--disable-features="+strings.Join(unique(disableFeatures), ","))
+	}
+	return result
 }
 
 // updateExecCommand intelligently adds missing flags to an Exec command string.
 // It handles quoted arguments and avoids duplicating existing flags.
 func updateExecCommand(execCmd string, flagsToAdd []string) string {
-    if len(flagsToAdd) == 0 {
-        return execCmd
-    }
+	if len(flagsToAdd) == 0 {
+		return execCmd
+	}
 
-    trimmedCmd := strings.TrimSpace(execCmd)
-    parts, err := parseCommandLine(trimmedCmd)
-    if err != nil {
-        // Fallback to old behavior if parsing fails
-        fmt.Printf("⚠️  Warning: Could not parse command line '%s': %v. Using simple split.\n", execCmd, err)
-        parts = strings.Fields(trimmedCmd)
-    }
+	trimmedCmd := strings.TrimSpace(execCmd)
+	parts, err := parseCommandLine(trimmedCmd)
+	if err != nil {
+		// Fallback to old behavior if parsing fails
+		fmt.Printf("⚠️  Warning: Could not parse command line '%s': %v. Using simple split.\n", execCmd, err)
+		parts = strings.Fields(trimmedCmd)
+	}
 
-    if len(parts) == 0 {
-        return ""
-    }
+	if len(parts) == 0 {
+		return ""
+	}
 
-    executable := parts[0]
-    args := parts[1:]
+	executable := parts[0]
+	args := parts[1:]
 
-    // 2. Separate existing arguments into flags and non-flags (like %U, URLs).
-    var existingFlags []string
-    var otherArgs []string
-    for _, arg := range args {
-        if strings.HasPrefix(arg, "-") {
-            existingFlags = append(existingFlags, arg)
-        } else {
-            otherArgs = append(otherArgs, arg)
-        }
-    }
+	// 2. Separate existing arguments into flags and non-flags (like %U, URLs).
+	var existingFlags []string
+	var otherArgs []string
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			existingFlags = append(existingFlags, arg)
+		} else {
+			otherArgs = append(otherArgs, arg)
+		}
+	}
 
-    // 3. Determine which flags to add, avoiding duplicates.
-    finalFlags := make([]string, len(existingFlags))
-    copy(finalFlags, existingFlags)
-    existingSet := make(map[string]bool)
-    for _, f := range existingFlags {
-        existingSet[f] = true
-    }
+	// 3. Determine which flags to add, avoiding duplicates.
+	finalFlags := make([]string, len(existingFlags))
+	copy(finalFlags, existingFlags)
+	existingSet := make(map[string]bool)
+	for _, f := range existingFlags {
+		existingSet[f] = true
+	}
 
-    for _, flagToAdd := range flagsToAdd {
-        if !existingSet[flagToAdd] {
-            finalFlags = append(finalFlags, flagToAdd)
-            existingSet[flagToAdd] = true // In case flagsToAdd has duplicates
-        }
-    }
+	for _, flagToAdd := range flagsToAdd {
+		if !existingSet[flagToAdd] {
+			finalFlags = append(finalFlags, flagToAdd)
+			existingSet[flagToAdd] = true // In case flagsToAdd has duplicates
+		}
+	}
 
-    // 4. Reconstruct the command string.
-    var newParts []string
-    newParts = append(newParts, executable)
-    newParts = append(newParts, finalFlags...)
-    newParts = append(newParts, otherArgs...)
+	// Merge feature flags for clarity
+	finalFlags = mergeFeatureFlags(finalFlags)
 
-    // Re-quote any arguments that contain spaces
-    for i, part := range newParts {
-        if strings.Contains(part, " ") && !strings.HasPrefix(part, `"`) {
-            newParts[i] = `"` + part + `"`
-        }
-    }
+	// 4. Reconstruct the command string.
+	var newParts []string
+	newParts = append(newParts, executable)
+	newParts = append(newParts, finalFlags...)
+	newParts = append(newParts, otherArgs...)
 
-    return strings.Join(newParts, " ")
+	// Re-quote any arguments that contain spaces
+	for i, part := range newParts {
+		if strings.Contains(part, " ") && !strings.HasPrefix(part, `"`) {
+			newParts[i] = `"` + part + `"`
+		}
+	}
+
+	return strings.Join(newParts, " ")
 }
 
 func removeFlagFromCommand(command, flagName string) string {
-    // Remove flag and its value (if any) from the command
-    // This handles both --flag=value and --flag value formats
+	// Remove flag and its value (if any) from the command
+	// This handles both --flag=value and --flag value formats
 
-    // Pattern for --flag=value
-    equalPattern := regexp.MustCompile(fmt.Sprintf(`\s*%s=[^\s]*`, regexp.QuoteMeta(flagName)))
-    command = equalPattern.ReplaceAllString(command, "")
+	// Pattern for --flag=value
+	equalPattern := regexp.MustCompile(fmt.Sprintf(`\s*%s=[^\s]*`, regexp.QuoteMeta(flagName)))
+	command = equalPattern.ReplaceAllString(command, "")
 
-    // Pattern for --flag value (where value doesn't start with -)
-    spacePattern := regexp.MustCompile(fmt.Sprintf(`\s*%s\s+[^\s-][^\s]*`, regexp.QuoteMeta(flagName)))
-    command = spacePattern.ReplaceAllString(command, "")
+	// Pattern for --flag value (where value doesn't start with -)
+	spacePattern := regexp.MustCompile(fmt.Sprintf(`\s*%s\s+[^\s-][^\s]*`, regexp.QuoteMeta(flagName)))
+	command = spacePattern.ReplaceAllString(command, "")
 
-    // Pattern for standalone --flag
-    standalonePattern := regexp.MustCompile(fmt.Sprintf(`\s*%s(?:\s|$)`, regexp.QuoteMeta(flagName)))
-    command = standalonePattern.ReplaceAllString(command, " ")
+	// Pattern for standalone --flag
+	standalonePattern := regexp.MustCompile(fmt.Sprintf(`\s*%s(?:\s|$)`, regexp.QuoteMeta(flagName)))
+	command = standalonePattern.ReplaceAllString(command, " ")
 
-    return strings.TrimSpace(command)
+	return strings.TrimSpace(command)
 }
