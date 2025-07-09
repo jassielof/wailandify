@@ -162,3 +162,8 @@ What this does is:
 - Once defined, you add the engines you want to apply the flags to.
 
 Once you have this, run the program with `lbdm` and it will apply the flags to the desktop entries and respective PWAs, all saved in the user's home directory under `.local/share/applications`.
+
+
+## Installation
+
+

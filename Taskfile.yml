@@ -5,7 +5,7 @@ vars:
 
 tasks:
   default:
-    cmd: go build -o bin/
+    cmd: go build -o bin/ ./cmd/lbdm
   docker:
     cmds:
       - sudo docker build -t lbdm .
