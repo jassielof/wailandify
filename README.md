@@ -8,4 +8,4 @@ Use astral/uv to install from git: `uv tool install <repository-url>`.
 
 ## Usage
 
-Usage should be self-
+Usage should be self-explanatory. Run `wailandify --help` for more information.
