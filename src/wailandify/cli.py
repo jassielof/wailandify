@@ -30,9 +30,6 @@ def apply(
         ),
     ] = False,
 ):
-    """
-    Applies Wayland flags to configured applications based on the config file.
-    """
     if dry_run:
         print(
             "[bold yellow]Running in dry-run mode. No files will be changed.[/bold yellow]"
@@ -43,34 +40,32 @@ def apply(
     except Exception:
         raise typer.Exit(code=1)
 
-    # --- DEBUGGING LINE ADDED HERE ---
     print("[bold blue]DEBUG: Loaded config:[/bold blue]", cfg)
 
     all_desktop_files = discovery.get_all_desktop_files()
     user_desktop_dir = Path.home() / ".local/share/applications"
 
     if not user_desktop_dir.exists() and not dry_run:
-        print(
-            f"🔧 User application directory not found. Creating {user_desktop_dir}..."
-        )
         user_desktop_dir.mkdir(parents=True, exist_ok=True)
 
     print("-" * 30)
 
-    for key, program_settings in cfg.programs.items():
-        print(f"[bold magenta]Processing '{key}'...[/bold magenta]")
+    # --- MODIFIED LOOP HERE ---
+    for program_settings in cfg.programs:
+        print(f"[bold magenta]Processing '{program_settings.name}'...[/bold magenta]")
 
-        exec_path = discovery.find_executable_path(program_settings.names)
+        exec_path = discovery.find_executable_path(program_settings.executables)
         if not exec_path:
             print(
-                f"  [yellow]⚠️  Could not find executable for any of: {program_settings.names}. Skipping.[/yellow]"
+                f"  [yellow]⚠️  Could not find executable for any of: {program_settings.executables}. Skipping.[/yellow]"
             )
             continue
 
         print(f"  [dim]Found executable: {exec_path}[/dim]")
 
+        # We need to pass ProgramSettings to discovery now
         related_files = discovery.find_related_desktop_files(
-            exec_path, program_settings, all_desktop_files
+            exec_path, program_settings.executables, all_desktop_files
         )
 
         if not related_files:
@@ -78,40 +73,30 @@ def apply(
             continue
 
         for source_path in related_files:
+            # ... (the rest of the file from here is mostly the same)
             target_path = user_desktop_dir / source_path.name
             print(f"  -> Found desktop file: [cyan]{source_path}[/cyan]")
 
-            # Since you are running in dry-run, we disable the 'already applied' check to always see what it *would* do.
-            # original_content = source_path.read_text().strip()
             modified_content = desktop.apply_flags_to_desktop_file(
                 source_path, program_settings.flags
             )
-
-            # if original_content == modified_content.strip():
-            #      print("     [green]✅ Flags already applied. Skipping.[/green]")
-            #      continue
 
             print(f"     [bold]Target path:[/bold] {target_path}")
             print(f"     [bold]Flags to add:[/bold] {' '.join(program_settings.flags)}")
 
             if not dry_run:
                 try:
-                    # Backup the original file if it exists in the target location
                     if target_path.exists():
                         backup.create_backup(target_path)
 
-                    # If the source is not in the user dir, copy it first to ensure we aren't modifying system files directly
                     if source_path != target_path:
                         shutil.copy2(source_path, target_path)
 
-                    # Now, write the modified content to the user's local directory
-                    with open(target_path, "w") as f:
-                        f.write(modified_content)
+                    target_path.write_text(modified_content)
                     print("     [green]✅ Applied flags successfully.[/green]")
 
                 except Exception as e:
                     print(f"     [bold red]❌ Error applying flags: {e}[/bold red]")
-                    # Fail fast as requested
                     raise typer.Exit(code=1)
         print("-" * 30)
 

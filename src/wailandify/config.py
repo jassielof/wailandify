@@ -1,6 +1,5 @@
 # src/waylandify/config.py
 from pathlib import Path
-import importlib.resources
 
 import tomlkit
 from pydantic import BaseModel, ValidationError
@@ -12,65 +11,67 @@ BACKUP_DIR = CONFIG_DIR / "backups"
 
 
 class ProgramSettings(BaseModel):
-    """Defines settings for a single program entry in the config."""
-
-    names: list[str]
+    name: str
+    executables: list[str]
     flags: list[str]
 
 
 class Config(BaseModel):
-    """The root model for the entire config.toml file."""
-
-    programs: dict[str, ProgramSettings]
+    programs: list[ProgramSettings]
 
 
+# Updated default config to match the new structure
+DEFAULT_CONFIG = """
+#
+# Waylandify Configuration File
+#
+# Use [[programs]] to define a list of applications to modify.
+#
+# - 'name': A unique name for this entry (e.g., "vscode").
+# - 'executables': A list of binary names to search for (e.g., ["code", "code-insiders"]).
+# - 'flags': A list of command-line flags to apply.
+#
+
+[[programs]]
+name = "vscode"
+executables = ["code", "code-insiders"]
+flags = [
+    "--enable-features=UseOzonePlatform",
+    "--ozone-platform=wayland",
+]
+
+[[programs]]
+name = "brave"
+executables = ["brave-browser", "brave-browser-stable"]
+flags = [
+    "--enable-features=TouchpadOverscrollHistoryNavigation",
+]
+"""
+
+
+# ... (the rest of the file remains the same)
 def create_default_config():
-    """Creates the config directory and default config file if they don't exist."""
     if CONFIG_FILE_PATH.exists():
         print(f"[yellow]Configuration file already exists at:[/] {CONFIG_FILE_PATH}")
         return
-
     print(f"Creating default config at {CONFIG_FILE_PATH}...")
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-        # Read the default config from the external file
-        try:
-            with importlib.resources.open_text(
-                "wailandify", "default_config.toml"
-            ) as f:
-                default_config_content = f.read()
-        except FileNotFoundError:
-            # Fallback to reading from the same directory
-            default_config_path = Path(__file__).parent / "default_config.toml"
-            with open(default_config_path, "r") as f:
-                default_config_content = f.read()
-
-        with open(CONFIG_FILE_PATH, "w") as f:
-            f.write(default_config_content)
+        CONFIG_FILE_PATH.write_text(DEFAULT_CONFIG)
         print("[green]✅ Successfully created configuration file.[/green]")
-        print("Please edit it to match your needs before running 'apply'.")
     except Exception as e:
         print(f"[bold red]❌ Error creating config file: {e}[/bold red]")
 
 
 def load_config() -> Config:
-    """Loads and validates the configuration from the TOML file."""
-    if not CONFIG_FILE_PATH.exists():
+    if not CONFIG_FILE_PATH.is_file():
         print(
             f"[bold red]❌ Configuration file not found at {CONFIG_FILE_PATH}[/bold red]"
         )
-        print("Please run 'waylandify init' to create a default config file.")
         raise FileNotFoundError
-
     try:
-        with open(CONFIG_FILE_PATH, "r") as f:
-            data = tomlkit.parse(f.read())
-
-        # Validate the parsed data against our Pydantic model
-        config_model = Config.model_validate(data)
-        return config_model
-
+        data = tomlkit.parse(CONFIG_FILE_PATH.read_text())
+        return Config.model_validate(data)
     except ValidationError as e:
         print("[bold red]❌ Configuration file is invalid.[/bold red]")
         for error in e.errors():

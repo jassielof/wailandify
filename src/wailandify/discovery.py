@@ -2,7 +2,6 @@
 import shutil
 from pathlib import Path
 
-from .config import ProgramSettings
 
 # Standard directories where .desktop files are stored
 DESKTOP_FILE_DIRS = [
@@ -33,15 +32,21 @@ def get_all_desktop_files() -> list[Path]:
     return all_files
 
 
+# src/waylandify/discovery.py
+# ... (imports and first two functions are fine)
+
+
 def find_related_desktop_files(
-    exec_path: str, program_settings: ProgramSettings, all_desktop_files: list[Path]
+    exec_path: str,
+    executables: list[str],  # Changed this parameter
+    all_desktop_files: list[Path],
 ) -> list[Path]:
     """
     Finds all .desktop files that reference the given program.
     This simulates a `grep` for the executable name/aliases in all .desktop files.
     """
     found_files: set[Path] = set()
-    search_terms = set(program_settings.names)
+    search_terms = set(executables)  # Use the list directly
 
     for desktop_file in all_desktop_files:
         try:
@@ -49,18 +54,15 @@ def find_related_desktop_files(
             for line in content.splitlines():
                 line = line.strip()
                 if line.startswith("Exec="):
-                    # Get everything after "Exec="
                     command_str = line.split("=", 1)[1].strip()
-                    # Get the executable part (the first "word")
-                    executable = command_str.split()[0]
+                    if not command_str:
+                        continue  # Handle empty Exec=
+                    executable_in_file = command_str.split()[0]
 
-                    # Check if the executable's name is in our search terms
-                    if Path(executable).name in search_terms:
+                    if Path(executable_in_file).name in search_terms:
                         found_files.add(desktop_file)
-                        # We only need to match one Exec= line to add the file
                         break
         except (IOError, UnicodeDecodeError):
-            # Ignore files that can't be read
             continue
 
     return list(found_files)
