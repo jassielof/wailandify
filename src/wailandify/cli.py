@@ -30,6 +30,10 @@ def apply(
         ),
     ] = False,
 ):
+    """
+    Applies Wayland flags to the applications defined in the config file.
+    """
+
     if dry_run:
         print(
             "[bold yellow]Running in dry-run mode. No files will be changed.[/bold yellow]"
