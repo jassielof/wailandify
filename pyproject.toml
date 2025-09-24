@@ -5,7 +5,11 @@ description = "Script to add Wayland support to Chromium-based apps."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Jassiel Ovando", email = "jassielovando@protonmail.com" }]
-dependencies = []
+dependencies = [
+    "pydantic>=2.11.9",
+    "tomlkit>=0.13.3",
+    "typer[all]>=0.19.2",
+]
 
 [project.scripts]
 wailandify = "wailandify:main"

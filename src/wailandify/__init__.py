@@ -1,2 +1,5 @@
+from wailandify.cli import app
+
+
 def main():
-    print("Hello from wailandify!")
+    app()
