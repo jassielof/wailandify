@@ -1,4 +1,3 @@
-# src/waylandify/discovery.py
 import shutil
 from pathlib import Path
 

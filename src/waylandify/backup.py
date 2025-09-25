@@ -1,4 +1,3 @@
-# src/waylandify/backup.py
 import datetime
 import shutil
 from pathlib import Path

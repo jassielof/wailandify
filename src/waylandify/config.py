@@ -1,4 +1,3 @@
-# src/waylandify/config.py
 from pathlib import Path
 
 import tomlkit

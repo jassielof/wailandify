@@ -1,4 +1,3 @@
-# src/waylandify/cli.py
 import shutil
 from pathlib import Path
 from typing_extensions import Annotated
