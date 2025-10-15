@@ -19,36 +19,9 @@ class Config(BaseModel):
     programs: list[ProgramSettings]
 
 
-# Updated default config to match the new structure
-DEFAULT_CONFIG = """
-#
-# Waylandify Configuration File
-#
-# Use [[programs]] to define a list of applications to modify.
-#
-# - 'name': A unique name for this entry (e.g., "vscode").
-# - 'executables': A list of binary names to search for (e.g., ["code", "code-insiders"]).
-# - 'flags': A list of command-line flags to apply.
-#
-
-[[programs]]
-name = "vscode"
-executables = ["code", "code-insiders"]
-flags = [
-    "--enable-features=UseOzonePlatform",
-    "--ozone-platform=wayland",
-]
-
-[[programs]]
-name = "brave"
-executables = ["brave-browser", "brave-browser-stable"]
-flags = [
-    "--enable-features=TouchpadOverscrollHistoryNavigation",
-]
-"""
+DEFAULT_CONFIG = (Path(__file__).parent / "data" / "config.toml").read_text()
 
 
-# ... (the rest of the file remains the same)
 def create_default_config():
     if CONFIG_FILE_PATH.exists():
         print(f"[yellow]Configuration file already exists at:[/] {CONFIG_FILE_PATH}")

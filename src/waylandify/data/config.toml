@@ -1,0 +1,31 @@
+#
+# Waylandify Configuration File
+#
+# Use [[programs]] to define a list of applications to modify.
+#
+# - 'name': A unique name for this entry (e.g., "vscode").
+# - 'executables': A list of binary names to search for (e.g., ["code", "code-insiders"]).
+# - 'flags': A list of command-line flags to apply.
+#
+
+[[programs]]
+name = "Electron Apps"
+executables = ["code", "code-insiders"]
+flags = [
+    "--enable-features=UseOzonePlatform",
+    "--ozone-platform=wayland",
+    "--gtk-version=4",
+]
+
+[[programs]]
+name = "Chromium Browsers"
+executables = [
+    "brave-browser",
+    "brave-browser-stable",
+    "microsoft-edge",
+    "microsoft-edge-stable",
+]
+flags = [
+    "--enable-features=TouchpadOverscrollHistoryNavigation",
+    "--gtk-version=4",
+]
